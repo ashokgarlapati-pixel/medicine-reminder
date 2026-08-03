@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Medicine Reminder</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="app-body">
+  <!-- Alarm Modal -->
+  <div id="alarm-modal" class="modal">
+    <div class="modal-content glass-panel danger-glow">
+      <div class="alarm-icon"><i class="fas fa-bell fa-shake"></i></div>
+      <img id="alarm-medicine-photo" src="" alt="Medicine Photo" style="display: none; width: 150px; height: 150px; object-fit: cover; border-radius: 10px; margin: 0 auto 15px auto;">
+      <h2 class="pulsing-text">Time to Take Medicine!</h2>
+      <p id="alarm-medicine-name" class="alarm-med-name">Aspirin</p>
+      <div class="alarm-controls">
+        <button id="dismiss-alarm-btn" class="btn warning-btn pulse-btn"
+          style="display: none; margin-bottom: 10px; width: 100%;"><i class="fas fa-clock"></i> Remind me in 7
+          mins</button>
+        <button id="stop-alarm-btn" class="btn success-btn pulse-btn"><i class="fas fa-check-circle"></i> Confirm
+          Taken</button>
+      </div>
+      <!-- Audio element for buzzer -->
+      <audio id="buzzer-audio" src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" loop
+        preload="auto"></audio>
+    </div>
+  </div>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar glass-panel" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo" style="overflow: hidden;">
+          <img src="https://kommodo.ai/i/NSj8Z4MUg0USLI6ntnEy" alt="Logo"
+            style="width: 100%; height: 100%; object-fit: contain;">
+        </div>
+        <h2>MedSync Pro</h2>
+        <button class="close-sidebar" id="close-sidebar"><i class="fas fa-times"></i></button>
+      </div>
+
+      <ul class="nav-links">
+        <li class="nav-item active" data-target="dashboard">
+          <i class="fas fa-chart-line"></i> <span>Dashboard</span>
+        </li>
+        <li class="nav-item" data-target="history">
+          <i class="fas fa-history"></i> <span>History Log</span>
+        </li>
+        <li class="nav-item" data-target="nutrition">
+          <i class="fas fa-apple-alt"></i> <span>AI Nutritionist</span>
+        </li>
+        <li class="nav-item" data-target="settings">
+          <i class="fas fa-cog"></i> <span>Settings</span>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <div class="avatar"><i class="fas fa-user"></i></div>
+          <div class="user-info">
+            <span id="user-email" class="email-text">Loading...</span>
+            <span class="status-indicator">Online</span>
+          </div>
+        </div>
+        <button id="logout-btn" class="btn logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Navigation -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="menu-toggle" class="menu-btn"><i class="fas fa-bars"></i></button>
+          <h1 id="page-title">Dashboard</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="notification-bell">
+            <i class="fas fa-bell"></i>
+            <span class="badge" id="active-alarms-badge" style="display: none;">!</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="content-wrapper">
+        <!-- -------------------- -->
+        <!-- SECTION: DASHBOARD -->
+        <!-- -------------------- -->
+        <section id="dashboard" class="page-section active">
+
+          <div class="dashboard-stats">
+            <div class="stat-card glass-panel">
+              <div class="stat-icon bg-blue"><i class="fas fa-calendar-alt"></i></div>
+              <div class="stat-info">
+                <h3>Active Schedules</h3>
+                <p id="stat-active">0</p>
+              </div>
+            </div>
+            <div class="stat-card glass-panel">
+              <div class="stat-icon bg-green"><i class="fas fa-check-circle"></i></div>
+              <div class="stat-info">
+                <h3>Taken Today</h3>
+                <p id="stat-taken">0</p>
+              </div>
+            </div>
+            <div class="stat-card glass-panel">
+              <div class="stat-icon bg-red"><i class="fas fa-times-circle"></i></div>
+              <div class="stat-info">
+                <h3>Missed Today</h3>
+                <p id="stat-missed">0</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <!-- Add Schedule Form -->
+            <div class="add-medicine-panel glass-panel">
+              <div class="panel-header">
+                <h2><i class="fas fa-plus-circle"></i> Add New Schedule</h2>
+              </div>
+              <form id="add-medicine-form" class="modern-form">
+                <div class="form-group">
+                  <label for="med-name"><i class="fas fa-capsules"></i> Medicine Name</label>
+                  <input type="text" id="med-name" required placeholder="e.g. Amoxicillin 500mg">
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="med-time"><i class="far fa-clock"></i> Time</label>
+                    <input type="time" id="med-time" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="med-duration"><i class="far fa-calendar-check"></i> Duration (Days)</label>
+                    <input type="number" id="med-duration" required min="1" placeholder="7">
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="med-phone"><i class="fas fa-phone-alt"></i> Patient Phone</label>
+                    <input type="tel" id="med-phone" required placeholder="+1234567890">
+                  </div>
+                  <div class="form-group">
+                    <label for="med-emergency-phone"><i class="fas fa-phone-volume"></i> Emergency Phone</label>
+                    <input type="tel" id="med-emergency-phone" required placeholder="+1987654321">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="med-photo"><i class="fas fa-camera"></i> Medicine Photo (Optional)</label>
+                  <input type="file" id="med-photo" accept="image/*" class="form-control" style="padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary);">
+                </div>
+
+                <button type="submit" class="btn primary-btn full-width mt-3">
+                  <i class="fas fa-save"></i> Save Schedule
+                </button>
+                <button type="button" class="btn warning-btn full-width mt-2" onclick="testBuzzer()" style="background: var(--warning); border: none;">
+                  <i class="fas fa-bell"></i> Test Buzzer
+                </button>
+              </form>
+            </div>
+
+            <!-- Active Medicines List -->
+            <div class="active-medicines-panel">
+              <div class="panel-header mb-4">
+                <h2><i class="fas fa-clipboard-list"></i> Your Medicines</h2>
+              </div>
+              <div id="medicines-container" class="medicines-list">
+                <!-- Medicines injected here -->
+                <div class="empty-state">
+                  <i class="fas fa-box-open"></i>
+                  <p>No active schedules found.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- -------------------- -->
+        <!-- SECTION: HISTORY     -->
+        <!-- -------------------- -->
+        <section id="history" class="page-section glass-panel">
+          <div class="panel-header">
+            <h2><i class="fas fa-history"></i> Medication History</h2>
+            <p class="subtitle">Review your adherence over time.</p>
+          </div>
+
+          <div class="history-table-container mt-4">
+            <table class="modern-table">
+              <thead>
+                <tr>
+                  <th>Medicine Name</th>
+                  <th>Date</th>
+                  <th>Scheduled Time</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                <!-- History rows injected here -->
+              </tbody>
+            </table>
+            <div id="history-empty-state" class="empty-state" style="display: none;">
+              <i class="fas fa-folder-open"></i>
+              <p>No history records available yet.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- -------------------- -->
+        <!-- SECTION: NUTRITION   -->
+        <!-- -------------------- -->
+        <section id="nutrition" class="page-section glass-panel">
+          <div class="panel-header">
+            <h2><i class="fas fa-apple-alt"></i> AI Clinical Nutritionist</h2>
+            <p class="subtitle">Upload your medical report and get a personalized, medically safe diet plan.</p>
+          </div>
+
+          <div class="nutrition-content mt-4">
+            <div class="form-group">
+              <label for="whatsapp-number"><i class="fab fa-whatsapp"></i> WhatsApp Number</label>
+              <input type="tel" id="whatsapp-number" class="form-control" placeholder="+1234567890" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); margin-bottom: 15px;">
+            </div>
+            
+            <div class="form-group">
+              <label for="medical-image"><i class="fas fa-file-image"></i> Upload Medical Document Image (Optional)</label>
+              <input type="file" id="medical-image" accept="image/*" class="form-control" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); margin-bottom: 15px;">
+            </div>
+
+            <div class="form-group">
+              <label for="medical-report"><i class="fas fa-file-medical"></i> Paste Your Medical Report Data (Optional if image provided)</label>
+              <textarea id="medical-report" rows="4" class="form-control" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-primary); margin-bottom: 15px;" placeholder="Paste lab results, detected conditions, or report text here..."></textarea>
+            </div>
+            <button id="generate-diet-btn" class="btn primary-btn" style="width: 100%; padding: 12px; margin-bottom: 20px;">
+              <i class="fas fa-magic"></i> Generate Personalized Diet Plan
+            </button>
+            <div id="diet-loading" style="display: none; text-align: center; padding: 20px;">
+              <i class="fas fa-spinner fa-spin fa-2x"></i>
+              <p>Analyzing medical data and generating plan...</p>
+            </div>
+            
+            <div id="diet-results" style="display: none; margin-top: 20px;">
+              <div class="diet-summary card-panel mb-4" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                <h3 style="margin-bottom: 10px;"><i class="fas fa-clipboard-list"></i> Summary</h3>
+                <p><strong>Conditions:</strong> <span id="diet-conditions"></span></p>
+                <p><strong>Risk Level:</strong> <span id="diet-risk"></span></p>
+                <p><strong>Daily Calories:</strong> <span id="diet-calories"></span> kcal</p>
+              </div>
+
+              <div class="diet-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div class="diet-card" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                  <h4><i class="fas fa-prescription-bottle-medical" style="color: #2ecc71;"></i> Early Morning Prep/Recovery</h4>
+                  <p id="diet-early-morning-items"></p>
+                </div>
+                <div class="diet-card" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                  <h4><i class="fas fa-sun" style="color: #f39c12;"></i> Morning (Breakfast)</h4>
+                  <p id="diet-morning-items"></p>
+                </div>
+                <div class="diet-card" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                  <h4><i class="fas fa-utensils" style="color: #3498db;"></i> Afternoon</h4>
+                  <p id="diet-afternoon-items"></p>
+                </div>
+                <div class="diet-card" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                  <h4><i class="fas fa-cookie" style="color: #e67e22;"></i> Snacks</h4>
+                  <p id="diet-snacks-items"></p>
+                </div>
+                <div class="diet-card" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                  <h4><i class="fas fa-moon" style="color: #9b59b6;"></i> Night</h4>
+                  <p id="diet-night-items"></p>
+                </div>
+              </div>
+
+              <div class="diet-notes card-panel mt-4" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px;">
+                <h3 style="margin-bottom: 10px;"><i class="fas fa-exclamation-circle" style="color: #e74c3c;"></i> Restrictions & Notes</h3>
+                <p id="diet-restrictions"></p>
+                <p id="diet-hydration" class="mt-2"></p>
+                <p id="diet-extra-notes" class="mt-2 text-muted"></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- -------------------- -->
+        <!-- SECTION: SETTINGS    -->
+        <!-- -------------------- -->
+        <section id="settings" class="page-section glass-panel">
+          <div class="panel-header">
+            <h2><i class="fas fa-cog"></i> Account Settings</h2>
+          </div>
+
+          <div class="settings-content mt-4">
+            <div class="settings-group">
+              <h3><i class="fas fa-bell"></i> Notification Preferences</h3>
+              <div class="toggle-setting">
+                <span>SMS Alerts (via Twilio)</span>
+                <label class="switch">
+                  <input type="checkbox" checked disabled>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="toggle-setting">
+                <span>Automated Voice Calls</span>
+                <label class="switch">
+                  <input type="checkbox" checked disabled>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <p class="setting-note">* Twilio features are configured server-side for this demo.</p>
+            </div>
+
+            <hr class="divider">
+
+            <div class="settings-group">
+              <h3><i class="fas fa-user-shield"></i> Security</h3>
+              <p>Logged in as: <strong id="setting-email">...</strong></p>
+              <button class="btn secondary-btn mt-3"
+                onclick="alert('Password reset link would be sent to your email.')">
+                <i class="fas fa-key"></i> Reset Password
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+
+</html>
