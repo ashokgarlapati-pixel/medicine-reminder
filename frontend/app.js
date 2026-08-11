@@ -29,6 +29,7 @@ const pageTitle = document.getElementById('page-title');
 const menuToggle = document.getElementById('menu-toggle');
 const closeSidebar = document.getElementById('close-sidebar');
 const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebar-overlay');
 
 const statActive = document.getElementById('stat-active');
 const statTaken = document.getElementById('stat-taken');
@@ -40,6 +41,18 @@ let currentUser = null;
 let cachedMedicines = [];        // Cache for better performance
 let activeAlarms = new Set();    // Track active alarms
 let isLoading = false;
+
+// Function to open/close mobile sidebar cleanly
+function toggleMobileSidebar(open) {
+  if (!sidebar) return;
+  if (open) {
+    sidebar.classList.add('open');
+    if (sidebarOverlay) sidebarOverlay.classList.add('active');
+  } else {
+    sidebar.classList.remove('open');
+    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+  }
+}
 
 // =============================================
 // Navigation Logic
@@ -56,15 +69,14 @@ if (navItems.length > 0) {
       pageSections.forEach(section => section.classList.remove('active'));
       document.getElementById(target).classList.add('active');
 
-      if (window.innerWidth <= 768) {
-        sidebar.classList.remove('open');
-      }
+      toggleMobileSidebar(false);
     });
   });
 }
 
-if (menuToggle) menuToggle.addEventListener('click', () => sidebar.classList.add('open'));
-if (closeSidebar) closeSidebar.addEventListener('click', () => sidebar.classList.remove('open'));
+if (menuToggle) menuToggle.addEventListener('click', () => toggleMobileSidebar(true));
+if (closeSidebar) closeSidebar.addEventListener('click', () => toggleMobileSidebar(false));
+if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => toggleMobileSidebar(false));
 
 // =============================================
 // Authentication Logic
@@ -125,6 +137,7 @@ onAuthStateChanged(auth, async (user) => {
 
     if (medicinesContainer) {
       await loadMedicines();
+      await loadUserDevices();
       checkAlarms();                    // Initial check
       setInterval(checkAlarms, 3000);  // Check every 3 seconds (optimized)
     }
@@ -156,6 +169,8 @@ if (addMedicineForm) {
     const duration = document.getElementById('med-duration').value;
     const phone = document.getElementById('med-phone').value.trim();
     const emergencyPhone = document.getElementById('med-emergency-phone').value.trim();
+    const reminderMode = document.getElementById('med-reminder-mode') ? document.getElementById('med-reminder-mode').value : 'mobile';
+    const deviceId = document.getElementById('med-device-id') ? document.getElementById('med-device-id').value : '';
     const photoInput = document.getElementById('med-photo');
 
     let photo = '';
@@ -163,16 +178,16 @@ if (addMedicineForm) {
       const reader = new FileReader();
       reader.onloadend = () => {
         photo = reader.result;
-        submitMedicine(name, time, duration, phone, emergencyPhone, photo);
+        submitMedicine(name, time, duration, phone, emergencyPhone, photo, reminderMode, deviceId);
       };
       reader.readAsDataURL(photoInput.files[0]);
     } else {
-      submitMedicine(name, time, duration, phone, emergencyPhone, photo);
+      submitMedicine(name, time, duration, phone, emergencyPhone, photo, reminderMode, deviceId);
     }
   });
 }
 
-async function submitMedicine(name, time, duration, phone, emergencyPhone, photo) {
+async function submitMedicine(name, time, duration, phone, emergencyPhone, photo, reminderMode, deviceId) {
   try {
     const response = await fetch(`${API_BASE_URL}/medicines/add`, {
       method: 'POST',
@@ -184,7 +199,9 @@ async function submitMedicine(name, time, duration, phone, emergencyPhone, photo
         duration: parseInt(duration),
         phone,
         emergencyPhone,
-        photo
+        photo,
+        reminderMode: reminderMode || 'mobile',
+        deviceId: deviceId || ''
       })
     });
 
@@ -275,9 +292,14 @@ function renderMedicines(medicines) {
     } else if (now >= medicineTime) {
       todayStatus = 'pending';
     }
+    const isIot = med.reminderMode === 'iot';
+    const modeBadge = isIot 
+      ? `<span class="mode-badge iot-badge" style="font-size: 11px; background: rgba(139, 92, 246, 0.2); color: #a78bfa; padding: 2px 8px; border-radius: 12px; margin-left: 6px;"><i class="fas fa-microchip"></i> IoT (${med.deviceId || 'ESP32'})</span>` 
+      : `<span class="mode-badge mobile-badge" style="font-size: 11px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; padding: 2px 8px; border-radius: 12px; margin-left: 6px;"><i class="fas fa-mobile-alt"></i> Mobile</span>`;
+
     card.innerHTML = `
       <div class="med-header">
-        <span class="med-name"><i class="fas fa-capsules"></i> ${med.name}</span>
+        <span class="med-name"><i class="fas fa-capsules"></i> ${med.name} ${modeBadge}</span>
         <span class="status-badge status-${todayStatus}">${todayStatus}</span>
       </div>
       <div class="med-details">
@@ -396,52 +418,79 @@ window.deleteMedicine = async (id) => {
   }
 };
 
-window.confirmMedicine = async (id) => {
-  stopAlarm(id);
-
-  try {
-    await fetch(`${API_BASE_URL}/medicines/${id}/confirm`, {
-      method: 'PUT'
-    });
-
-    await loadMedicines();
-  } catch (error) {
-    console.error(error);
-  }
-};
-
-window.dismissMedicine = async (id) => {
-  // FULL stop buzzer
-  buzzerAudio.pause();
-  buzzerAudio.currentTime = 0;
-
-  alarmModal.classList.remove('active');
-  alarmModal.style.display = 'none';
-
-  activeAlarms.delete(id + '_1');
-
-  try {
-    await fetch(`${API_BASE_URL}/medicines/${id}/dismiss`, {
-      method: 'PUT'
-    });
-
-    await loadMedicines();
-  } catch (error) {
-    console.error(error);
-  }
-};
-
 function stopAlarm(id) {
-  buzzerAudio.pause();
-  buzzerAudio.currentTime = 0;
-  alarmModal.classList.remove('active');
-  alarmModal.style.display = 'none';
+  if (buzzerAudio) {
+    buzzerAudio.pause();
+    buzzerAudio.currentTime = 0;
+  }
+  if (alarmModal) {
+    alarmModal.classList.remove('active');
+    alarmModal.style.display = 'none';
+  }
 
   if (id) {
     activeAlarms.delete(id + '_1');
     activeAlarms.delete(id + '_2');
   }
 }
+
+window.confirmMedicine = async (id) => {
+  stopAlarm(id);
+
+  // Optimistically update cachedMedicines so checkAlarms immediately sees status === 'taken'
+  const today = new Date().toDateString();
+  const med = cachedMedicines.find(m => m._id === id);
+  if (med) {
+    if (!med.history) med.history = [];
+    let todayRecord = med.history.find(h => new Date(h.date).toDateString() === today);
+    if (!todayRecord) {
+      todayRecord = { date: new Date(), status: 'taken', takenAt: new Date() };
+      med.history.push(todayRecord);
+    } else {
+      todayRecord.status = 'taken';
+      todayRecord.takenAt = new Date();
+    }
+    renderMedicines(cachedMedicines);
+    renderHistory(cachedMedicines);
+    updateStats(cachedMedicines);
+  }
+
+  try {
+    await fetch(`${API_BASE_URL}/medicines/${id}/confirm`, {
+      method: 'PUT'
+    });
+    await loadMedicines();
+  } catch (error) {
+    console.error("Error confirming medicine:", error);
+  }
+};
+
+window.dismissMedicine = async (id) => {
+  stopAlarm(id);
+
+  // Optimistically update cachedMedicines
+  const today = new Date().toDateString();
+  const med = cachedMedicines.find(m => m._id === id);
+  if (med) {
+    if (!med.history) med.history = [];
+    let todayRecord = med.history.find(h => new Date(h.date).toDateString() === today);
+    if (!todayRecord) {
+      todayRecord = { date: new Date(), status: 'pending', firstBuzzerDismissed: true };
+      med.history.push(todayRecord);
+    } else {
+      todayRecord.firstBuzzerDismissed = true;
+    }
+  }
+
+  try {
+    await fetch(`${API_BASE_URL}/medicines/${id}/dismiss`, {
+      method: 'PUT'
+    });
+    await loadMedicines();
+  } catch (error) {
+    console.error("Error dismissing medicine:", error);
+  }
+};
 
 window.testBuzzer = () => {
   // ... your existing testBuzzer code (unchanged)
@@ -463,6 +512,7 @@ async function checkAlarms() {
 
     medicines.forEach(med => {
       if (med.status === 'deleted') return;
+      if (med.reminderMode === 'iot') return; // ESP32 handles physical audio/LED reminder for IoT mode
 
       const todayRecord = (med.history || []).find(h =>
         new Date(h.date).toDateString() === todayStr
@@ -630,3 +680,135 @@ if (generateDietBtn) {
     }
   });
 }
+
+// =============================================
+// IoT Device Management
+// =============================================
+const registerDeviceForm = document.getElementById('register-device-form');
+const devicesContainer = document.getElementById('devices-container');
+const medDeviceIdSelect = document.getElementById('med-device-id');
+
+async function loadUserDevices() {
+  if (!currentUser) return;
+  try {
+    const response = await fetch(`${API_BASE_URL}/devices/user/${currentUser.uid}`);
+    if (!response.ok) return;
+
+    const devices = await response.json();
+    renderDevices(devices);
+    populateDeviceDropdown(devices);
+  } catch (error) {
+    console.error("Error loading user devices:", error);
+  }
+}
+
+function renderDevices(devices) {
+  if (!devicesContainer) return;
+  devicesContainer.innerHTML = '';
+
+  if (!devices || devices.length === 0) {
+    devicesContainer.innerHTML = `
+      <div class="empty-state">
+        <i class="fas fa-microchip"></i>
+        <p>No IoT devices connected yet.</p>
+      </div>`;
+    return;
+  }
+
+  devices.forEach(dev => {
+    const isOnline = dev.status === 'online';
+    const lastSeenStr = dev.lastSeen ? new Date(dev.lastSeen).toLocaleTimeString() : 'Never';
+    const card = document.createElement('div');
+    card.className = 'glass-panel';
+    card.style.cssText = 'padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--border-color);';
+
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 600; font-size: 15px; color: var(--accent);"><i class="fas fa-microchip"></i> ${dev.deviceName}</span>
+        <span class="status-badge" style="background: ${isOnline ? 'rgba(16, 185, 129, 0.2)' : 'rgba(148, 163, 184, 0.2)'}; color: ${isOnline ? 'var(--success)' : 'var(--text-secondary)'}; font-size: 11px;">
+          ${isOnline ? '🟢 Online' : '⚪ Offline'}
+        </span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+        <div><strong>ID:</strong> ${dev.deviceId}</div>
+        <div><strong>Type:</strong> ${dev.connectionType || 'WiFi'}</div>
+        <div><strong>Sync:</strong> ${dev.syncStatus || 'synced'}</div>
+        <div><strong>Last Seen:</strong> ${lastSeenStr}</div>
+      </div>
+      <button class="btn secondary-btn" onclick="disconnectDevice('${dev.deviceId}')" style="color: var(--danger); border-color: var(--danger); width: 100%; margin-top: 5px;">
+        <i class="fas fa-unlink"></i> Disconnect Device
+      </button>
+    `;
+
+    devicesContainer.appendChild(card);
+  });
+}
+
+function populateDeviceDropdown(devices) {
+  if (!medDeviceIdSelect) return;
+  medDeviceIdSelect.innerHTML = '<option value="">No ESP32 Selected (Uses Default)</option>';
+
+  if (devices && devices.length > 0) {
+    devices.forEach(dev => {
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      opt.textContent = `⚡ ${dev.deviceName} (${dev.deviceId})`;
+      medDeviceIdSelect.appendChild(opt);
+    });
+  }
+}
+
+if (registerDeviceForm) {
+  registerDeviceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) return alert("Please login first");
+
+    const deviceId = document.getElementById('dev-id').value.trim();
+    const deviceName = document.getElementById('dev-name').value.trim();
+    const connectionType = document.getElementById('dev-type').value;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/devices/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId,
+          userId: currentUser.uid,
+          deviceName,
+          connectionType
+        })
+      });
+
+      if (response.ok) {
+        registerDeviceForm.reset();
+        await loadUserDevices();
+        alert("Device registered successfully!");
+      } else {
+        const errData = await response.json();
+        alert(errData.error || "Failed to register device");
+      }
+    } catch (error) {
+      console.error("Error registering device:", error);
+      alert("Something went wrong while registering device");
+    }
+  });
+}
+
+window.disconnectDevice = async (deviceId) => {
+  if (!confirm(`Are you sure you want to disconnect device ${deviceId}?`)) return;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      await loadUserDevices();
+      await loadMedicines();
+    } else {
+      alert("Failed to disconnect device");
+    }
+  } catch (error) {
+    console.error("Error disconnecting device:", error);
+  }
+};

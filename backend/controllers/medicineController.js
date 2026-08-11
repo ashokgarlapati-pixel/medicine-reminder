@@ -1,11 +1,10 @@
-// medicine-reminder-app/backend/controllers/medicineController.js
-
 const Medicine = require('../models/Medicine');
+const Device = require('../models/Device');
 
 // Add a new medicine
 exports.addMedicine = async (req, res) => {
   try {
-    const { userId, name, time, duration, phone, emergencyPhone, photo } = req.body;
+    const { userId, name, time, duration, phone, emergencyPhone, photo, reminderMode, deviceId } = req.body;
 
     if (!userId || !name || !time || !duration) {
       return res.status(400).json({ error: 'Required fields are missing' });
@@ -18,7 +17,9 @@ exports.addMedicine = async (req, res) => {
       duration: parseInt(duration, 10),
       phone: phone || '',
       emergencyPhone: emergencyPhone || '',
-      photo
+      photo,
+      reminderMode: reminderMode || 'mobile',
+      deviceId: deviceId || ''
     });
 
     await newMedicine.save();
@@ -46,8 +47,8 @@ exports.getMedicines = async (req, res) => {
       userId,
       status: { $ne: 'deleted' }
     })
-      .select('name time duration phone emergencyPhone photo startDate endDate status history') // Explicit fields
-      .lean()   // ← Much faster (plain JS objects)
+      .select('name time duration phone emergencyPhone photo startDate endDate status reminderMode deviceId syncStatus reminderStatus history')
+      .lean()
       .sort({ createdAt: -1 });
 
     res.status(200).json(medicines);
@@ -83,31 +84,25 @@ exports.confirmMedicine = async (req, res) => {
         takenAt: new Date(),
         firstBuzzerDismissed: true
       });
-
-      historyIndex = medicine.history.length - 1;
-    }
-
-    const todayHistory = medicine.history[historyIndex];
-
-    if (!todayHistory.alarmTime) {
-      todayHistory.alarmTime = todayHistory.date || new Date();
-    }
-
-    const diffMinutes = Math.floor(
-      (new Date() - new Date(todayHistory.alarmTime)) / (1000 * 60)
-    );
-
-    if (diffMinutes <= 60) {
+    } else {
+      const todayHistory = medicine.history[historyIndex];
       todayHistory.status = 'taken';
       todayHistory.takenAt = new Date();
       todayHistory.firstBuzzerDismissed = true;
-    } else {
-      return res.status(400).json({
-        error: 'Confirmation time expired'
-      });
     }
 
+    medicine.reminderStatus = 'taken';
     await medicine.save();
+
+    // Reset IoT Device active reminder state if applicable
+    try {
+      if (medicine.deviceId) {
+        await Device.updateOne({ deviceId: medicine.deviceId }, { $set: { reminderActive: false, medicineName: '' } });
+      }
+      await Device.updateMany({ userId: medicine.userId }, { $set: { reminderActive: false, medicineName: '' } });
+    } catch (devErr) {
+      console.error("Error resetting device active status:", devErr);
+    }
 
     res.status(200).json({
       message: 'Medicine marked as taken'

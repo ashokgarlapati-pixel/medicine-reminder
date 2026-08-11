@@ -11,6 +11,10 @@ const medicineSchema = new mongoose.Schema({
   startDate: { type: Date, default: Date.now },
   endDate: { type: Date },
   status: { type: String, enum: ['active', 'completed', 'deleted'], default: 'active' },
+  reminderMode: { type: String, enum: ['mobile', 'iot'], default: 'mobile' },
+  deviceId: { type: String, required: false, default: '' },
+  syncStatus: { type: String, enum: ['synced', 'pending', 'failed'], default: 'synced' },
+  reminderStatus: { type: String, enum: ['idle', 'ringing', 'taken', 'missed'], default: 'idle' },
   history: [{
     date: { type: Date, default: Date.now },
     status: { type: String, enum: ['pending', 'taken', 'missed', 'deleted'], default: 'pending' }, takenAt: { type: Date },

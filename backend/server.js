@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const medicineRoutes = require('./routes/medicineRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const deviceRoutes = require('./routes/deviceRoutes');
 const { startScheduler } = require('./services/scheduler');
 
 const app = express();
@@ -17,6 +18,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Routes
 app.use('/api/medicines', medicineRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/devices', deviceRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

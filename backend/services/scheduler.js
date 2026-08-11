@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const Medicine = require('../models/Medicine');
+const Device = require('../models/Device');
 const twilio = require('twilio');
 const DietPlan = require('../models/DietPlan');
 
@@ -7,12 +8,20 @@ const DietPlan = require('../models/DietPlan');
 let twilioClient;
 
 const initTwilio = () => {
-  twilioClient = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-  );
+  const sid = process.env.TWILIO_ACCOUNT_SID ? process.env.TWILIO_ACCOUNT_SID.trim() : '';
+  const token = process.env.TWILIO_AUTH_TOKEN ? process.env.TWILIO_AUTH_TOKEN.trim() : '';
 
-  console.log("Twilio initialized successfully");
+  if (!sid || !token || sid === 'your_twilio_account_sid') {
+    console.warn("[Twilio] Account SID or Auth Token missing or default in .env");
+    return;
+  }
+
+  try {
+    twilioClient = twilio(sid, token);
+    console.log("[Twilio] Initialized client successfully with SID:", sid);
+  } catch (err) {
+    console.error("[Twilio] Failed to initialize client:", err.message);
+  }
 };
 
 // === ADD THIS HELPER FUNCTION HERE ===
@@ -23,31 +32,86 @@ const trimOldHistory = (medicine) => {
   );
 };
 
-// Function to send SMS...
-const sendSMS = async (to, message) => {
-
-  if (!twilioClient) return;
-
-  console.log("Sending SMS to:", to);
-  return twilioClient.messages.create({
-    body: message,
-    from: process.env.TWILIO_PHONE_NUMBER,
-    to
-  });
+// Helper function to format phone numbers to E.164 format (+91...)
+const formatPhoneNumber = (phone) => {
+  if (!phone) return '';
+  let cleaned = String(phone).trim();
+  if (!cleaned.startsWith('+')) {
+    if (cleaned.length === 10) {
+      cleaned = '+91' + cleaned;
+    } else {
+      cleaned = '+' + cleaned;
+    }
+  }
+  return cleaned;
 };
 
-// Function to make voice call...
+// Function to send SMS with robust error handling
+const sendSMS = async (to, message) => {
+  if (!twilioClient) {
+    console.warn("[Twilio] Client not initialized. Skipping SMS.");
+    return false;
+  }
+
+  const formattedTo = formatPhoneNumber(to);
+  if (!formattedTo) {
+    console.warn("[Twilio] Invalid phone number for SMS:", to);
+    return false;
+  }
+
+  try {
+    console.log(`[Twilio] Sending SMS to ${formattedTo}...`);
+    const res = await twilioClient.messages.create({
+      body: message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: formattedTo
+    });
+    console.log(`[Twilio] SMS sent successfully to ${formattedTo}. Message SID: ${res.sid}`);
+    return true;
+  } catch (error) {
+    if (error.code === 20003 || error.status === 401) {
+      console.error(`[Twilio Auth Error 20003] Authentication failed! Check TWILIO_ACCOUNT_SID (${process.env.TWILIO_ACCOUNT_SID}) & TWILIO_AUTH_TOKEN in backend/.env`);
+    } else if (error.code === 21608) {
+      console.error(`[Twilio Error 21608] The recipient number ${formattedTo} is unverified. For Twilio Trial accounts, add ${formattedTo} to Verified Caller IDs on the Twilio Console.`);
+    } else {
+      console.error(`[Twilio SMS Error ${error.code || error.status || 'UNKNOWN'}]:`, error.message);
+    }
+    return false;
+  }
+};
+
+// Function to make voice call with robust error handling
 const makeVoiceCall = async (to, message) => {
+  if (!twilioClient) {
+    console.warn("[Twilio] Client not initialized. Skipping Voice Call.");
+    return false;
+  }
 
-  if (!twilioClient) return;
+  const formattedTo = formatPhoneNumber(to);
+  if (!formattedTo) {
+    console.warn("[Twilio] Invalid phone number for Call:", to);
+    return false;
+  }
 
-  console.log("Making call to:", to);
-
-  return twilioClient.calls.create({
-    twiml: `<Response><Say>${message}</Say></Response>`,
-    from: process.env.TWILIO_PHONE_NUMBER,
-    to
-  });
+  try {
+    console.log(`[Twilio] Making voice call to ${formattedTo}...`);
+    const res = await twilioClient.calls.create({
+      twiml: `<Response><Say>${message}</Say></Response>`,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: formattedTo
+    });
+    console.log(`[Twilio] Voice call initiated successfully to ${formattedTo}. Call SID: ${res.sid}`);
+    return true;
+  } catch (error) {
+    if (error.code === 20003 || error.status === 401) {
+      console.error(`[Twilio Auth Error 20003] Authentication failed! Check TWILIO_ACCOUNT_SID (${process.env.TWILIO_ACCOUNT_SID}) & TWILIO_AUTH_TOKEN in backend/.env`);
+    } else if (error.code === 21608) {
+      console.error(`[Twilio Error 21608] The recipient number ${formattedTo} is unverified. For Twilio Trial accounts, add ${formattedTo} to Verified Caller IDs on the Twilio Console.`);
+    } else {
+      console.error(`[Twilio Call Error ${error.code || error.status || 'UNKNOWN'}]:`, error.message);
+    }
+    return false;
+  }
 };
 
 
@@ -88,7 +152,7 @@ const sendDietPlanReminders = async (now) => {
         const bMsg = plan.reminders?.breakfast || "Reminder: Prepare your breakfast and early morning prep items for tomorrow!";
         const bImgPrompt = plan.images?.breakfast;
         const bMediaUrl = bImgPrompt ? `https://image.pollinations.ai/prompt/${encodeURIComponent(bImgPrompt)}?width=512&height=512&nologo=true` : null;
-        
+
         console.log(`[Scheduler] Sending breakfast reminder to ${formattedNumber}...`);
         await twilioClient.messages.create({
           body: bMsg,
@@ -185,17 +249,41 @@ const startScheduler = () => {
   cron.schedule('* * * * *', async () => {
     try {
       const now = new Date();
+      console.log("Scheduler Running:", now);
       await sendDietPlanReminders(now);
+
+      // Device connectivity status updater (mark offline if > 2 mins inactive)
+      try {
+        const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000);
+        await Device.updateMany(
+          { status: 'online', lastSeen: { $lt: twoMinsAgo } },
+          { $set: { status: 'offline' } }
+        );
+      } catch (devErr) {
+        console.error("[Scheduler] Error updating device statuses:", devErr);
+      }
+
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMinutes = now.getMinutes().toString().padStart(2, '0');
       const currentTimeStr = `${currentHours}:${currentMinutes}`;
       const todayStr = now.toDateString();
 
       const activeMedicines = await Medicine.find({ status: 'active' });
+      console.log("Medicines Found:", activeMedicines.length);
 
       for (const medicine of activeMedicines) {
         let todayHistory = medicine.history.find(h =>
           new Date(h.date).toDateString() === todayStr
+        );
+        console.log(
+          "Medicine:",
+          medicine.name,
+          "| Medicine Time:",
+          medicine.time,
+          "| Current Time:",
+          currentTimeStr,
+          "| History Exists:",
+          !!todayHistory
         );
 
         if (!todayHistory && currentTimeStr === medicine.time) {
@@ -210,6 +298,24 @@ const startScheduler = () => {
           };
 
           medicine.history.push(todayHistory);
+          medicine.reminderStatus = 'ringing';
+
+          // Activate IoT reminder
+          const device = await Device.findOne({
+            userId: medicine.userId,
+            reminderMode: "iot",
+            status: "online"
+          });
+
+          if (device) {
+            device.reminderActive = true;
+            device.medicineName = medicine.name;
+            device.reminderTime = now;
+
+            await device.save();
+
+            console.log("IoT Reminder Activated for:", device.deviceId);
+          }
         }
 
         if (!todayHistory) continue;
