@@ -2,7 +2,7 @@
 
 import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from './firebase.js';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'https://medicine-reminder-backend-k64i.onrender.com/api';
 
 // DOM Elements
 const loginBtn = document.getElementById('login-btn');
@@ -293,8 +293,8 @@ function renderMedicines(medicines) {
       todayStatus = 'pending';
     }
     const isIot = med.reminderMode === 'iot';
-    const modeBadge = isIot 
-      ? `<span class="mode-badge iot-badge" style="font-size: 11px; background: rgba(139, 92, 246, 0.2); color: #a78bfa; padding: 2px 8px; border-radius: 12px; margin-left: 6px;"><i class="fas fa-microchip"></i> IoT (${med.deviceId || 'ESP32'})</span>` 
+    const modeBadge = isIot
+      ? `<span class="mode-badge iot-badge" style="font-size: 11px; background: rgba(139, 92, 246, 0.2); color: #a78bfa; padding: 2px 8px; border-radius: 12px; margin-left: 6px;"><i class="fas fa-microchip"></i> IoT (${med.deviceId || 'ESP32'})</span>`
       : `<span class="mode-badge mobile-badge" style="font-size: 11px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; padding: 2px 8px; border-radius: 12px; margin-left: 6px;"><i class="fas fa-mobile-alt"></i> Mobile</span>`;
 
     card.innerHTML = `
@@ -609,7 +609,7 @@ if (generateDietBtn) {
   generateDietBtn.addEventListener('click', async () => {
     const reportText = medicalReportInput.value.trim();
     const whatsappNumber = whatsappNumberInput.value.trim();
-    
+
     if (!reportText && (!medicalImageInput.files || medicalImageInput.files.length === 0)) {
       alert("Please provide either a medical report text or upload an image.");
       return;
@@ -637,10 +637,10 @@ if (generateDietBtn) {
       const response = await fetch(`${API_BASE_URL}/ai/generate-diet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          reportText, 
-          base64Image, 
-          mimeType, 
+        body: JSON.stringify({
+          reportText,
+          base64Image,
+          mimeType,
           whatsappNumber,
           userId: currentUser ? currentUser.uid : null
         })
@@ -652,19 +652,19 @@ if (generateDietBtn) {
       }
 
       const data = await response.json();
-      
+
       // Populate summary
       document.getElementById('diet-conditions').textContent = data.summary?.detectedConditions?.join(', ') || 'None';
       document.getElementById('diet-risk').textContent = data.summary?.riskLevel || 'Unknown';
       document.getElementById('diet-calories').textContent = data.totalCalories || 0;
-      
+
       // Populate meals
       document.getElementById('diet-early-morning-items').innerHTML = data.dietPlan?.earlyMorning?.foodItems?.join('<br>') || 'No data';
       document.getElementById('diet-morning-items').innerHTML = data.dietPlan?.morning?.foodItems?.join('<br>') || 'No data';
       document.getElementById('diet-afternoon-items').innerHTML = data.dietPlan?.afternoon?.foodItems?.join('<br>') || 'No data';
       document.getElementById('diet-snacks-items').innerHTML = data.dietPlan?.snacks?.foodItems?.join('<br>') || 'No data';
       document.getElementById('diet-night-items').innerHTML = data.dietPlan?.night?.foodItems?.join('<br>') || 'No data';
-      
+
       // Populate notes
       document.getElementById('diet-restrictions').innerHTML = `<strong>Restrictions:</strong> <br>${data.restrictions?.join('<br>') || 'None'}`;
       document.getElementById('diet-hydration').innerHTML = `<strong>Hydration:</strong> ${data.hydration || 'N/A'}`;
