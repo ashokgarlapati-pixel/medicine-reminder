@@ -350,7 +350,7 @@ Do NOT add any explanation outside JSON.`;
           }
 
           const conditions = dietPlanData.summary?.detectedConditions?.join(', ') || 'None';
-          const msg = `Hello! Your MedSync Pro AI Diet Plan has been generated. Conditions analyzed: ${conditions}. We will send you reminders here!`;
+          const msg = `Hello! Your Smart Medicine Reminder AI Diet Plan has been generated. Conditions analyzed: ${conditions}. We will send you reminders here!`;
           
           await twilioClient.messages.create({
             body: msg,
