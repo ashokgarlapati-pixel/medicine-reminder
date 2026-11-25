@@ -4,6 +4,7 @@ const { GoogleGenAI } = require('@google/genai');
 const fetch = require('node-fetch');
 const twilio = require('twilio');
 const DietPlan = require('../models/DietPlan');
+const { sendWhatsAppMessage } = require('../services/scheduler');
 
 router.post('/generate-diet', async (req, res) => {
   try {
@@ -339,28 +340,15 @@ Do NOT add any explanation outside JSON.`;
 
       res.status(200).json(dietPlanData);
 
-      // Optional: Dispatch initial Twilio WhatsApp confirmation
+      // Optional: Dispatch initial Twilio WhatsApp confirmation using trial-compatible ContentSid
       if (whatsappNumber && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_NUMBER) {
-        try {
-          const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-          
-          let formattedNumber = whatsappNumber;
-          if (!formattedNumber.startsWith('whatsapp:')) {
-            formattedNumber = 'whatsapp:' + formattedNumber;
-          }
-
-          const conditions = dietPlanData.summary?.detectedConditions?.join(', ') || 'None';
-          const msg = `Hello! Your Smart Medicine Reminder AI Diet Plan has been generated. Conditions analyzed: ${conditions}. We will send you reminders here!`;
-          
-          await twilioClient.messages.create({
-            body: msg,
-            from: process.env.TWILIO_WHATSAPP_NUMBER,
-            to: formattedNumber
-          });
-          console.log(`Initial WhatsApp confirmation sent to ${formattedNumber}`);
-        } catch (twilioErr) {
-          console.error("Failed to send WhatsApp message via Twilio:", twilioErr);
-        }
+        const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        const conditions = dietPlanData.summary?.detectedConditions?.join(', ') || 'None';
+        await sendWhatsAppMessage(whatsappNumber, {
+          client: twilioClient,
+          trigger: 'diet_whatsapp_initial',
+          context: `Initial AI diet plan confirmation (conditions: ${conditions})`
+        });
       }
 
     } catch (apiError) {
